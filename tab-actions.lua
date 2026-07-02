@@ -1,0 +1,240 @@
+local M = {}
+
+local tab_background_presets = {
+  blue = '#6272a4',
+  cyan = '#8be9fd',
+  gray = '#44475a',
+  green = '#50fa7b',
+  grey = '#44475a',
+  orange = '#ffb86c',
+  pink = '#ff79c6',
+  purple = '#bd93f9',
+  red = '#ff5555',
+  yellow = '#f1fa8c',
+}
+
+local function normalize_tab_background(value)
+  if value == nil then
+    return nil
+  end
+
+  local color = value:gsub('^%s+', ''):gsub('%s+$', ''):lower()
+  if color == '' or color == 'reset' or color == 'clear' or color == 'default' then
+    return ''
+  end
+
+  if tab_background_presets[color] then
+    return tab_background_presets[color]
+  end
+
+  if color:match('^%x%x%x%x%x%x$') then
+    return '#' .. color
+  end
+
+  if color:match('^#%x%x%x%x%x%x$') then
+    return color
+  end
+
+  return nil
+end
+
+local function readable_text_color(background)
+  local red, green, blue = background:match('^#(%x%x)(%x%x)(%x%x)$')
+  if red == nil then
+    return '#f8f8f2'
+  end
+
+  local luminance =
+    (0.299 * tonumber(red, 16) + 0.587 * tonumber(green, 16) + 0.114 * tonumber(blue, 16)) / 255
+
+  if luminance > 0.65 then
+    return '#282a36'
+  end
+
+  return '#f8f8f2'
+end
+
+local function tab_shortcut(tab)
+  local number = (tab.tab_index or 0) + 1
+  if number >= 1 and number <= 9 then
+    return ' ⌘' .. number
+  end
+
+  return ''
+end
+
+local function set_active_tab_background(wezterm, window, color)
+  local tab_id = tostring(window:active_tab():tab_id())
+  if color == '' then
+    wezterm.GLOBAL.tab_backgrounds[tab_id] = nil
+  else
+    wezterm.GLOBAL.tab_backgrounds[tab_id] = color
+  end
+end
+
+local function apply_tab_name_and_background(wezterm, window, line)
+  if line == nil then
+    return false
+  end
+
+  local text = line:gsub('^%s+', ''):gsub('%s+$', '')
+  local name, color_name = text:match('^(.-)%s*|%s*(.-)%s*$')
+  if name == nil then
+    name, color_name = text:match('^(.-)%s*,%s*(.-)%s*$')
+  end
+
+  if name == nil or color_name == nil then
+    return false
+  end
+
+  name = name:gsub('^%s+', ''):gsub('%s+$', '')
+  local color = normalize_tab_background(color_name)
+  if color == nil then
+    return false
+  end
+
+  if name ~= '' then
+    window:active_tab():set_title(name)
+  end
+  set_active_tab_background(wezterm, window, color)
+  return true
+end
+
+local function tab_title(tab, wezterm)
+  local title = tab.tab_title
+  if title == nil or title == '' then
+    title = tab.active_pane.title
+  end
+  if title == nil or title == '' then
+    title = 'wezterm'
+  end
+
+  local custom_background = wezterm.GLOBAL.tab_backgrounds[tostring(tab.tab_id)]
+  local text = ' ' .. title .. tab_shortcut(tab) .. ' '
+
+  if custom_background == nil then
+    return { { Text = text } }
+  end
+
+  return {
+    { Background = { Color = custom_background } },
+    { Foreground = { Color = readable_text_color(custom_background) } },
+    { Text = text },
+  }
+end
+
+function M.apply(config, wezterm)
+  local act = wezterm.action
+
+  wezterm.GLOBAL.tab_backgrounds = wezterm.GLOBAL.tab_backgrounds or {}
+
+  local rename_tab = act.PromptInputLine {
+    description = 'Rename tab',
+    action = wezterm.action_callback(function(window, pane, line)
+      if line then
+        window:active_tab():set_title(line)
+      end
+    end),
+  }
+
+  local set_tab_background = act.PromptInputLine {
+    description = 'Tab color: blue, cyan, gray, green, orange, pink, purple, red, yellow, #rrggbb, reset',
+    action = wezterm.action_callback(function(window, pane, line)
+      local color = normalize_tab_background(line)
+      if color == nil then
+        window:toast_notification('WezTerm', 'Unknown tab color', nil, 3000)
+        return
+      end
+
+      set_active_tab_background(wezterm, window, color)
+    end),
+  }
+
+  local rename_and_set_tab_background = act.PromptInputLine {
+    description = 'Tab name and color: name | purple, name | #44475a, or name | reset',
+    action = wezterm.action_callback(function(window, pane, line)
+      if not apply_tab_name_and_background(wezterm, window, line) then
+        window:toast_notification('WezTerm', 'Use: name | color', nil, 3000)
+      end
+    end),
+  }
+
+  local tab_actions_menu = act.InputSelector {
+    title = 'Tab actions',
+    alphabet = 'nxbcagokpry',
+    choices = {
+      { id = 'rename', label = 'Rename tab...' },
+      { id = 'reset', label = 'Reset tab color' },
+      { id = 'blue', label = 'Blue' },
+      { id = 'cyan', label = 'Cyan' },
+      { id = 'gray', label = 'Gray' },
+      { id = 'green', label = 'Green' },
+      { id = 'orange', label = 'Orange' },
+      { id = 'pink', label = 'Pink' },
+      { id = 'purple', label = 'Purple' },
+      { id = 'red', label = 'Red' },
+      { id = 'yellow', label = 'Yellow' },
+    },
+    action = wezterm.action_callback(function(window, pane, id)
+      if id == nil then
+        return
+      end
+
+      if id == 'rename' then
+        window:perform_action(rename_tab, pane)
+      elseif id == 'reset' then
+        set_active_tab_background(wezterm, window, '')
+      elseif tab_background_presets[id] then
+        set_active_tab_background(wezterm, window, tab_background_presets[id])
+      end
+    end),
+  }
+
+  wezterm.on('rename-tab', function(window, pane)
+    window:perform_action(rename_tab, pane)
+  end)
+
+  wezterm.on('set-tab-background', function(window, pane)
+    window:perform_action(set_tab_background, pane)
+  end)
+
+  wezterm.on('rename-and-set-tab-background', function(window, pane)
+    window:perform_action(rename_and_set_tab_background, pane)
+  end)
+
+  wezterm.on('show-tab-actions', function(window, pane)
+    window:perform_action(tab_actions_menu, pane)
+  end)
+
+  wezterm.on('augment-command-palette', function()
+    return {
+      {
+        brief = 'Tab Actions Menu',
+        doc = 'Open a picker to rename the tab, set/reset color, or do both',
+        action = act.EmitEvent 'show-tab-actions',
+      },
+      {
+        brief = 'Rename Tab',
+        doc = 'Prompt for a new name for the active tab',
+        action = act.EmitEvent 'rename-tab',
+      },
+      {
+        brief = 'Change Tab Background Color',
+        doc = 'Set active tab color: blue, cyan, gray, green, orange, pink, purple, red, yellow, #rrggbb, reset',
+        action = act.EmitEvent 'set-tab-background',
+      },
+      {
+        brief = 'Rename Tab and Set Background Color',
+        doc = 'Prompt for both values, for example: api | purple',
+        action = act.EmitEvent 'rename-and-set-tab-background',
+      },
+    }
+  end)
+
+  -- Keep native/fancy tabs, but let selected tabs display optional custom colors.
+  wezterm.on('format-tab-title', function(tab)
+    return tab_title(tab, wezterm)
+  end)
+end
+
+return M
