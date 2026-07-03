@@ -34,10 +34,7 @@ local pi_status_patterns = {
     'always allow',
     'esc reject',
 
-    -- questionnaire/custom UI
-    'enter select',
-    'enter confirm',
-    'esc cancel',
+    -- questionnaire/custom UI high-signal prompts
     'your answer:',
     'ready to submit',
     'unanswered:',
@@ -47,7 +44,6 @@ local pi_status_patterns = {
     'how should pi handle this change%?',
     'enter/y approve',
     'approve %+ enable auto',
-    'editing inline',
 
     -- generic extension prompts
     'allow command',
@@ -58,7 +54,50 @@ local pi_status_patterns = {
   },
 }
 
+local pi_notification_patterns = {
+  -- High-signal prompts that warrant a macOS notification. Keep generic
+  -- picker hints such as "enter select" out of this list: they also appear
+  -- while the user is actively navigating /tree and other Pi menus.
+  'dangerous command detected',
+  'permission required',
+  'how do you want to proceed%?',
+  'allow once',
+  'allow for session',
+  'always allow',
+  'esc reject',
+
+  'your answer:',
+  'ready to submit',
+  'unanswered:',
+
+  'review proposed file change',
+  'how should pi handle this change%?',
+  'enter/y approve',
+  'approve %+ enable auto',
+
+  'allow command',
+  'allow tool',
+  'do you trust',
+  'press enter to continue',
+  'esc dismiss',
+}
+
 local pi_waiting_notifications = {}
+local working_frames = { '◌', '◔', '◕', '●' }
+
+local function advance_working_frame()
+  M.working_frame = ((tonumber(M.working_frame or 0) or 0) + 1) % #working_frames
+end
+
+local function status_icon(agent_deck, status)
+  if status == 'working' then
+    local frame = tonumber(M.working_frame or 0) or 0
+    return working_frames[(frame % #working_frames) + 1]
+  end
+
+  return agent_deck.get_status_icon(status)
+end
+
 
 local function strip_ansi(text)
   if type(text) ~= 'string' then
@@ -112,8 +151,8 @@ local function matches_any(text, patterns)
   return false
 end
 
-local function pane_has_pi_waiting_prompt(pane)
-  return matches_any(pane_text(pane), pi_status_patterns.waiting)
+local function pane_has_notifiable_pi_waiting_prompt(pane)
+  return matches_any(pane_text(pane), pi_notification_patterns)
 end
 
 local function applescript_quote(value)
@@ -177,7 +216,7 @@ local function apply_pi_waiting_overrides(window, agent_deck, wezterm)
       local state = agent_deck.get_agent_state(pane_id)
       if state == nil then
         clear_pi_waiting_notification(wezterm, pane_id)
-      elseif pane_has_pi_waiting_prompt(pane) then
+      elseif pane_has_notifiable_pi_waiting_prompt(pane) then
         notify_pi_waiting(window, wezterm, pane_id)
         state.status = 'waiting'
         state.pi_waiting_override = true
@@ -225,7 +264,7 @@ local function add_status_badge(items, agent_deck, counts, status, label)
   end
 
   table.insert(items, { Foreground = { Color = agent_deck.get_status_color(status) } })
-  table.insert(items, { Text = agent_deck.get_status_icon(status) .. ' ' .. count .. ' ' .. label })
+  table.insert(items, { Text = status_icon(agent_deck, status) .. ' ' .. count .. ' ' .. label })
 end
 
 local function right_status_items(agent_deck)
@@ -249,7 +288,7 @@ function M.apply(config, wezterm)
   local agent_deck = load_plugin(wezterm)
 
   agent_deck.apply_to_config(config, {
-    update_interval = 1000,
+    update_interval = 500,
     cooldown_ms = 2000,
     max_lines = 100,
 
@@ -314,6 +353,7 @@ function M.apply(config, wezterm)
       return
     end
 
+    advance_working_frame()
     apply_pi_waiting_overrides(window, agent_deck, wezterm)
     window:set_right_status(wezterm.format(right_status_items(agent_deck)))
   end)
@@ -327,7 +367,7 @@ function M.tab_indicator_width(tab, wezterm)
 
   local width = 0
   for _, state in ipairs(pane_states(tab)) do
-    width = width + wezterm.column_width(agent_deck.get_status_icon(state.status))
+    width = width + wezterm.column_width(status_icon(agent_deck, state.status))
   end
 
   return width
@@ -342,7 +382,7 @@ function M.tab_indicator_items(tab)
   local items = {}
   for _, state in ipairs(pane_states(tab)) do
     table.insert(items, { Foreground = { Color = agent_deck.get_status_color(state.status) } })
-    table.insert(items, { Text = agent_deck.get_status_icon(state.status) })
+    table.insert(items, { Text = status_icon(agent_deck, state.status) })
   end
 
   return items
