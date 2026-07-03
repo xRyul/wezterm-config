@@ -111,6 +111,14 @@ function M.apply(config, wezterm)
 
     wezterm.background_child_process(command)
   end)
+
+  local command_palette = require 'command-palette'
+  command_palette.add {
+    brief = 'Config: Open WezTerm Config',
+    doc = 'Open the active WezTerm config file',
+    icon = 'md_cog',
+    action = act.EmitEvent 'open-config',
+  }
 end
 
 return M

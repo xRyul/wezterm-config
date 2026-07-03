@@ -15,3 +15,10 @@ A compact WezTerm configuration inspired by Ghostty defaults, using Dracula colo
 - `Cmd + right-click` opens a tab actions menu.
 - Tab colors can be selected by name or custom hex value.
 - Small portability guards for platform-specific behavior.
+- Local `resurrect.wezterm` integration for saving/restoring workspace layouts.
+- `Ctrl+Cmd+S` saves the current workspace.
+- `Ctrl+Cmd+R` opens the resurrect fuzzy restore picker.
+
+## Resurrect plugin
+
+This config expects a local `resurrect.wezterm` checkout at `plugins/resurrect.wezterm`. The plugin checkout and saved state files are intentionally ignored here; keep the forked plugin code in its own repository.

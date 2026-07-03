@@ -12,6 +12,14 @@ function M.apply(config, wezterm)
   config.font_size = 13.0
   config.max_fps = 120
 
+  -- Dracula-styled command palette. WezTerm uses the foreground color as
+  -- the selected-row background, so purple gives the palette a clear accent.
+  config.command_palette_bg_color = '#282a36'
+  config.command_palette_fg_color = '#bd93f9'
+  config.command_palette_font_size = 14.5
+  config.command_palette_rows = 14
+  config.palette_max_key_assigments_for_action = 1
+
   config.window_padding = {
     left = 2,
     right = 2,

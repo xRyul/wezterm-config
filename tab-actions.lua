@@ -239,6 +239,13 @@ function M.apply(config, wezterm)
   local act = wezterm.action
 
   ensure_tab_background_maps(wezterm)
+  -- Only the first augment-command-palette handler is used by WezTerm,
+  -- so collect entries in a plain Lua module that other modules append to.
+  local command_palette = require 'command-palette'
+  command_palette.reset()
+  local function add_command_palette_entry(entry)
+    command_palette.add(entry)
+  end
 
   local rename_tab = act.PromptInputLine {
     description = 'Rename tab',
@@ -318,29 +325,33 @@ function M.apply(config, wezterm)
     window:perform_action(tab_actions_menu, pane)
   end)
 
+  add_command_palette_entry {
+    brief = 'Tabs: Actions Menu',
+    doc = 'Rename, recolor, or reset the active tab',
+    icon = 'md_tab',
+    action = act.EmitEvent 'show-tab-actions',
+  }
+  add_command_palette_entry {
+    brief = 'Tabs: Rename Tab',
+    doc = 'Set a custom name for the active tab',
+    icon = 'md_rename_box',
+    action = act.EmitEvent 'rename-tab',
+  }
+  add_command_palette_entry {
+    brief = 'Tabs: Set Tab Color',
+    doc = 'Set or reset the active tab background color',
+    icon = 'md_format_color_fill',
+    action = act.EmitEvent 'set-tab-background',
+  }
+  add_command_palette_entry {
+    brief = 'Tabs: Rename and Color Tab',
+    doc = 'Set both tab name and background color',
+    icon = 'md_palette',
+    action = act.EmitEvent 'rename-and-set-tab-background',
+  }
+
   wezterm.on('augment-command-palette', function()
-    return {
-      {
-        brief = 'Tab Actions Menu',
-        doc = 'Open a picker to rename the tab, set/reset color, or do both',
-        action = act.EmitEvent 'show-tab-actions',
-      },
-      {
-        brief = 'Rename Tab',
-        doc = 'Prompt for a new name for the active tab',
-        action = act.EmitEvent 'rename-tab',
-      },
-      {
-        brief = 'Change Tab Background Color',
-        doc = 'Set active tab color: blue, cyan, gray, green, orange, pink, purple, red, yellow, #rrggbb, reset',
-        action = act.EmitEvent 'set-tab-background',
-      },
-      {
-        brief = 'Rename Tab and Set Background Color',
-        doc = 'Prompt for both values, for example: api | purple',
-        action = act.EmitEvent 'rename-and-set-tab-background',
-      },
-    }
+    return command_palette.entries()
   end)
 
   wezterm.on('update-status', function(window, pane)
