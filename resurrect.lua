@@ -126,6 +126,7 @@ function M.apply(config, wezterm)
     local message = 'Saved workspace: ' .. workspace .. ' at ' .. short_time .. ' (' .. summary_text .. ')'
 
     wezterm.GLOBAL.resurrect_last_save = message
+    wezterm.GLOBAL.agent_deck_right_status_pause_until = os.time() + 10
     write_last_save_marker(workspace, state_path, timestamp, summary)
     window:toast_notification('WezTerm', message, nil, 5000)
     window:set_right_status(wezterm.format {

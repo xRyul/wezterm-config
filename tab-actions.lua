@@ -221,18 +221,36 @@ local function tab_title(tab, wezterm, max_width)
     remember_tab_title_background(wezterm, title, custom_background)
   end
 
-  local compact_label = tab.is_active and tostring((tab.tab_index or 0) + 1) or '·'
-  local text = fit_tab_text(title, tab_shortcut(tab), remembered_tab_width(tab, max_width, wezterm), wezterm, compact_label)
-
-  if custom_background == nil then
-    return { { Text = text } }
+  local agent_deck = require 'agent-deck'
+  local agent_indicator_width = agent_deck.tab_indicator_width(tab, wezterm)
+  local width = remembered_tab_width(tab, max_width, wezterm)
+  if width ~= nil and agent_indicator_width > 0 then
+    width = math.max(width - agent_indicator_width, 1)
   end
 
-  return {
+  local compact_label = tab.is_active and tostring((tab.tab_index or 0) + 1) or '·'
+  local text = fit_tab_text(title, tab_shortcut(tab), width, wezterm, compact_label)
+  local indicators = agent_deck.tab_indicator_items(tab, wezterm)
+
+  if custom_background == nil then
+    local items = { { Text = text } }
+    for _, item in ipairs(indicators) do
+      table.insert(items, item)
+    end
+
+    return items
+  end
+
+  local items = {
     { Background = { Color = custom_background } },
     { Foreground = { Color = readable_text_color(custom_background) } },
     { Text = text },
   }
+  for _, item in ipairs(indicators) do
+    table.insert(items, item)
+  end
+
+  return items
 end
 
 function M.apply(config, wezterm)
