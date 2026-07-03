@@ -57,13 +57,16 @@ end
 local function tab_shortcut(tab)
   local number = (tab.tab_index or 0) + 1
   if number >= 1 and number <= 9 then
-    return ' ⌘' .. number
+    return '⌘' .. number
   end
 
   return ''
 end
 
-local function fit_tab_text(text, max_width, wezterm, fallback)
+local function fit_tab_text(title, shortcut, max_width, wezterm, fallback)
+  shortcut = shortcut or ''
+  local text = ' ' .. title .. (shortcut ~= '' and ' ' .. shortcut or '') .. ' '
+
   if max_width == nil then
     return text
   end
@@ -78,16 +81,35 @@ local function fit_tab_text(text, max_width, wezterm, fallback)
     return wezterm.truncate_right(fallback or text, max_width)
   end
 
-  text = wezterm.truncate_right(text, max_width)
+  if shortcut == '' then
+    text = wezterm.truncate_right(' ' .. title .. ' ', max_width)
+    local padding = max_width - wezterm.column_width(text)
+    if padding <= 0 then
+      return text
+    end
 
-  local padding = max_width - wezterm.column_width(text)
+    local left = math.floor(padding / 2)
+    local right = padding - left
+    return string.rep(' ', left) .. text .. string.rep(' ', right)
+  end
+
+  -- Keep the shortcut right-aligned, close to the tab close button.
+  local shortcut_text = shortcut .. '  '
+  local shortcut_width = wezterm.column_width(shortcut_text)
+  if max_width <= shortcut_width + 1 then
+    return wezterm.truncate_right(fallback or shortcut, max_width)
+  end
+
+  local title_width = max_width - shortcut_width
+  local title_text = wezterm.truncate_right(' ' .. title .. ' ', title_width)
+  local padding = title_width - wezterm.column_width(title_text)
   if padding <= 0 then
-    return text
+    return title_text .. shortcut_text
   end
 
   local left = math.floor(padding / 2)
   local right = padding - left
-  return string.rep(' ', left) .. text .. string.rep(' ', right)
+  return string.rep(' ', left) .. title_text .. string.rep(' ', right) .. shortcut_text
 end
 
 local function ensure_tab_background_maps(wezterm)
@@ -199,9 +221,8 @@ local function tab_title(tab, wezterm, max_width)
     remember_tab_title_background(wezterm, title, custom_background)
   end
 
-  local text = ' ' .. title .. tab_shortcut(tab) .. ' '
   local compact_label = tab.is_active and tostring((tab.tab_index or 0) + 1) or '·'
-  text = fit_tab_text(text, remembered_tab_width(tab, max_width, wezterm), wezterm, compact_label)
+  local text = fit_tab_text(title, tab_shortcut(tab), remembered_tab_width(tab, max_width, wezterm), wezterm, compact_label)
 
   if custom_background == nil then
     return { { Text = text } }
