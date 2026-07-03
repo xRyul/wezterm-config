@@ -360,19 +360,20 @@ function M.apply(config, wezterm)
     local ok_window_id, window_id = pcall(function()
       return window:window_id()
     end)
-    local ok_dims, dims = pcall(function()
-      return pane:get_dimensions()
+    local ok_tab_size, tab_size = pcall(function()
+      -- Use the whole tab size, not the active pane size; pane width shrinks when split.
+      return window:mux_window():active_tab():get_size()
     end)
     local ok_tabs, tab_infos = pcall(function()
       return window:mux_window():tabs_with_info()
     end)
 
-    if not ok_window_id or not ok_dims or not ok_tabs then
+    if not ok_window_id or not ok_tab_size or not ok_tabs then
       return
     end
 
     local tab_count = #tab_infos
-    local cols = tonumber(dims.cols) or 0
+    local cols = tonumber(tab_size.cols) or 0
     if tab_count <= 0 or cols <= 0 then
       return
     end
