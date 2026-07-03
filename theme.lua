@@ -23,7 +23,9 @@ function M.apply(config, wezterm)
   config.enable_tab_bar = true
   config.hide_tab_bar_if_only_one_tab = false
   config.use_fancy_tab_bar = true
-  config.show_new_tab_button_in_tab_bar = true
+  config.show_new_tab_button_in_tab_bar = false
+  -- High cap; tab-actions.lua computes the real equal width per window.
+  config.tab_max_width = 999
 
   if is_macos then
     config.window_decorations = 'INTEGRATED_BUTTONS|RESIZE'

@@ -63,13 +63,79 @@ local function tab_shortcut(tab)
   return ''
 end
 
+local function fit_tab_text(text, max_width, wezterm, fallback)
+  if max_width == nil then
+    return text
+  end
+
+  max_width = tonumber(max_width) or 0
+  if max_width <= 0 then
+    return ''
+  end
+
+  -- If there are too many tabs to read titles, fall back to a tiny marker.
+  if max_width <= 2 then
+    return wezterm.truncate_right(fallback or text, max_width)
+  end
+
+  text = wezterm.truncate_right(text, max_width)
+
+  local padding = max_width - wezterm.column_width(text)
+  if padding <= 0 then
+    return text
+  end
+
+  local left = math.floor(padding / 2)
+  local right = padding - left
+  return string.rep(' ', left) .. text .. string.rep(' ', right)
+end
+
+local function ensure_tab_background_maps(wezterm)
+  wezterm.GLOBAL.tab_backgrounds = wezterm.GLOBAL.tab_backgrounds or {}
+  wezterm.GLOBAL.tab_backgrounds_by_title = wezterm.GLOBAL.tab_backgrounds_by_title or {}
+  wezterm.GLOBAL.tab_title_widths_by_window = wezterm.GLOBAL.tab_title_widths_by_window or {}
+end
+
+local function mux_tab_title(tab)
+  if tab == nil or tab.get_title == nil then
+    return nil
+  end
+
+  local ok, title = pcall(function()
+    return tab:get_title()
+  end)
+  if not ok or title == nil or title == '' then
+    return nil
+  end
+
+  return title
+end
+
+local function remember_tab_title_background(wezterm, title, color)
+  if title == nil or title == '' then
+    return
+  end
+
+  ensure_tab_background_maps(wezterm)
+  if color == nil or color == '' then
+    wezterm.GLOBAL.tab_backgrounds_by_title[title] = nil
+  else
+    wezterm.GLOBAL.tab_backgrounds_by_title[title] = color
+  end
+end
+
 local function set_active_tab_background(wezterm, window, color)
-  local tab_id = tostring(window:active_tab():tab_id())
+  ensure_tab_background_maps(wezterm)
+  local tab = window:active_tab()
+  local tab_id = tostring(tab:tab_id())
+  local title = mux_tab_title(tab)
+
   if color == '' then
     wezterm.GLOBAL.tab_backgrounds[tab_id] = nil
   else
     wezterm.GLOBAL.tab_backgrounds[tab_id] = color
   end
+  remember_tab_title_background(wezterm, title, color)
 end
 
 local function apply_tab_name_and_background(wezterm, window, line)
@@ -100,17 +166,42 @@ local function apply_tab_name_and_background(wezterm, window, line)
   return true
 end
 
-local function tab_title(tab, wezterm)
+local function remembered_tab_width(tab, max_width, wezterm)
+  ensure_tab_background_maps(wezterm)
+
+  local window_width = wezterm.GLOBAL.tab_title_widths_by_window[tostring(tab.window_id)]
+  if window_width ~= nil then
+    return window_width
+  end
+
+  -- Retro tab bar passes a real available width; fancy passes config.tab_max_width.
+  if max_width ~= nil and max_width < 999 then
+    return max_width
+  end
+
+  return nil
+end
+
+local function tab_title(tab, wezterm, max_width)
   local title = tab.tab_title
   if title == nil or title == '' then
-    title = tab.active_pane.title
+    title = tab.active_pane and tab.active_pane.title or nil
   end
   if title == nil or title == '' then
     title = 'wezterm'
   end
 
-  local custom_background = wezterm.GLOBAL.tab_backgrounds[tostring(tab.tab_id)]
+  ensure_tab_background_maps(wezterm)
+  local tab_id = tostring(tab.tab_id)
+  local custom_background = wezterm.GLOBAL.tab_backgrounds[tab_id] or wezterm.GLOBAL.tab_backgrounds_by_title[title]
+  if custom_background ~= nil then
+    wezterm.GLOBAL.tab_backgrounds[tab_id] = custom_background
+    remember_tab_title_background(wezterm, title, custom_background)
+  end
+
   local text = ' ' .. title .. tab_shortcut(tab) .. ' '
+  local compact_label = tab.is_active and tostring((tab.tab_index or 0) + 1) or '·'
+  text = fit_tab_text(text, remembered_tab_width(tab, max_width, wezterm), wezterm, compact_label)
 
   if custom_background == nil then
     return { { Text = text } }
@@ -126,7 +217,7 @@ end
 function M.apply(config, wezterm)
   local act = wezterm.action
 
-  wezterm.GLOBAL.tab_backgrounds = wezterm.GLOBAL.tab_backgrounds or {}
+  ensure_tab_background_maps(wezterm)
 
   local rename_tab = act.PromptInputLine {
     description = 'Rename tab',
@@ -231,9 +322,38 @@ function M.apply(config, wezterm)
     }
   end)
 
-  -- Keep native/fancy tabs, but let selected tabs display optional custom colors.
-  wezterm.on('format-tab-title', function(tab)
-    return tab_title(tab, wezterm)
+  wezterm.on('update-status', function(window, pane)
+    ensure_tab_background_maps(wezterm)
+
+    local ok_window_id, window_id = pcall(function()
+      return window:window_id()
+    end)
+    local ok_dims, dims = pcall(function()
+      return pane:get_dimensions()
+    end)
+    local ok_tabs, tab_infos = pcall(function()
+      return window:mux_window():tabs_with_info()
+    end)
+
+    if not ok_window_id or not ok_dims or not ok_tabs then
+      return
+    end
+
+    local tab_count = #tab_infos
+    local cols = tonumber(dims.cols) or 0
+    if tab_count <= 0 or cols <= 0 then
+      return
+    end
+
+    local effective = window:effective_config()
+    local reserve = effective.show_new_tab_button_in_tab_bar and 3 or 0
+    local width = math.floor((cols - reserve) / tab_count)
+    wezterm.GLOBAL.tab_title_widths_by_window[tostring(window_id)] = math.max(width, 1)
+  end)
+
+  -- Fancy/native-height tab bar + padded titles gives equal-width tabs while preserving custom colors.
+  wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
+    return tab_title(tab, wezterm, max_width)
   end)
 end
 
