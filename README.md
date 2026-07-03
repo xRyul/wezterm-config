@@ -15,15 +15,13 @@ A compact WezTerm configuration inspired by Ghostty defaults, using Dracula colo
 - `Cmd + right-click` opens a tab actions menu.
 - Tab colors can be selected by name or custom hex value.
 - Small portability guards for platform-specific behavior.
-- Remote `wezterm-agent-deck` integration for AI-agent tab indicators, right-status summaries, and macOS notifications via `terminal-notifier`.
+- Remote `wezterm-agent-deck` integration for AI-agent tab indicators, right-status summaries, and macOS notifications for Pi waiting prompts.
 - Local `resurrect.wezterm` integration for saving/restoring workspace layouts.
 - `Ctrl+Cmd+S` saves the current workspace.
 - `Ctrl+Cmd+R` opens the resurrect fuzzy restore picker.
 
-## Resurrect plugin
+## Plugins and external tools
 
-This config expects a local `resurrect.wezterm` checkout at `plugins/resurrect.wezterm`. The plugin checkout and saved state files are intentionally ignored here; keep the forked plugin code in its own repository.
-
-## Agent Deck plugin
-
-This config loads `wezterm-agent-deck` directly from GitHub with `wezterm.plugin.require`, so no local plugin checkout is needed. It uses `terminal-notifier` for macOS notifications when an agent needs input or finishes.
+- `wezterm-agent-deck` — remote WezTerm plugin loaded with `wezterm.plugin.require('https://github.com/Eric162/wezterm-agent-deck')`; detects AI-agent panes for custom tab indicators, right-status summaries, and notifications.
+- `resurrect.wezterm` — local fork used because this config needs Pi-aware restore metadata: restore an entire saved workspace/session or jump back into one specific saved leaf/pane. This is what lets a Pi task resume at the exact pane/leaf instead of only restoring the whole workspace. It also preserves cwd, visible text, tab colors, and Pi restore commands.
+- `osascript` — macOS notification helper used for Pi waiting prompts so banners still appear while WezTerm is focused. Agent-finished events use WezTerm native toasts.
