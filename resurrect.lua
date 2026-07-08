@@ -114,6 +114,10 @@ function M.apply(config, wezterm)
   local plugin_init_path = join_path(separator, plugin_dir, 'plugin', '?', 'init.lua')
 
   wezterm.GLOBAL.resurrect_local_plugin_dir = plugin_dir
+  if platform.is_windows then
+    wezterm.GLOBAL.resurrect_wsl_distro = 'Ubuntu'
+    wezterm.GLOBAL.resurrect_wsl_home = [[\\wsl.localhost\Ubuntu\home\daniel]]
+  end
   package.path = table.concat({
     plugin_package_path,
     plugin_init_path,
