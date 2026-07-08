@@ -27,10 +27,15 @@ local function optional_enabled(module_name)
     return true
   end
 
-  -- The remote agent-deck plugin works on Windows and provides the Mac
-  -- config's tab indicators/right-status behavior. Keep resurrect opt-in
-  -- until its local plugin path is made Windows/WSL aware.
-  return module_name == 'agent-deck' and os.getenv('WEZTERM_DISABLE_AGENT_DECK') ~= '1'
+  if module_name == 'resurrect' then
+    return os.getenv('WEZTERM_DISABLE_RESURRECT') ~= '1'
+  end
+
+  if module_name == 'agent-deck' then
+    return os.getenv('WEZTERM_DISABLE_AGENT_DECK') ~= '1'
+  end
+
+  return false
 end
 
 local function apply_optional(module_name)

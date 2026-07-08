@@ -9,17 +9,114 @@ local function state_type_from_id(id)
   return id:match('^([^/\\]+)')
 end
 
+local function detect_platform(wezterm)
+  local target = wezterm.target_triple or ''
+  return {
+    is_windows = target:find('windows') ~= nil,
+    is_macos = target:find('apple%-darwin') ~= nil,
+  }
+end
+
+local function default_plugin_dir(platform)
+  local override = os.getenv('WEZTERM_RESURRECT_PLUGIN_DIR')
+  if override and override ~= '' then
+    return override
+  end
+
+  if platform.is_windows then
+    -- Native Windows WezTerm loads this config through a tiny Windows shim,
+    -- but the actual checkout lives in WSL with the rest of the dev projects.
+    return [[\\wsl.localhost\Ubuntu\home\daniel\Developer\Projects\resurrect.wezterm]]
+  end
+
+  local home = os.getenv('HOME')
+  if home and home ~= '' then
+    return home .. '/.config/wezterm/plugins/resurrect.wezterm'
+  end
+
+  if platform.is_macos then
+    return '/Users/daniel/.config/wezterm/plugins/resurrect.wezterm'
+  end
+
+  return '/home/daniel/.config/wezterm/plugins/resurrect.wezterm'
+end
+
+local function default_last_save_marker(platform)
+  local override = os.getenv('WEZTERM_RESURRECT_LAST_SAVE')
+  if override and override ~= '' then
+    return override
+  end
+
+  if platform.is_windows then
+    return [[\\wsl.localhost\Ubuntu\home\daniel\.config\wezterm\resurrect-last-save.txt]]
+  end
+
+  local home = os.getenv('HOME')
+  if home and home ~= '' then
+    return home .. '/.config/wezterm/resurrect-last-save.txt'
+  end
+
+  if platform.is_macos then
+    return '/Users/daniel/.config/wezterm/resurrect-last-save.txt'
+  end
+
+  return '/home/daniel/.config/wezterm/resurrect-last-save.txt'
+end
+
+local function path_separator(platform)
+  if platform.is_windows then
+    return '\\'
+  end
+
+  return '/'
+end
+
+local function join_path(separator, ...)
+  local parts = { ... }
+  return table.concat(parts, separator)
+end
+
+local function file_plugin_url(platform, path)
+  if path:match('^file://') then
+    return path
+  end
+
+  if platform.is_windows then
+    local host, share, rest = path:match('^\\\\([^\\]+)\\([^\\]+)\\(.+)$')
+    if host and share and rest then
+      return 'file://///' .. host .. '/' .. share .. '/' .. rest:gsub('\\', '/')
+    end
+  end
+
+  return 'file://' .. path
+end
+
+local function load_resurrect_plugin(platform, plugin_dir, separator, wezterm)
+  if platform.is_windows then
+    -- Native Windows WezTerm loads this config from a local shim. In that
+    -- mode wezterm.plugin.require rejects WSL UNC file:// plugin URLs, even
+    -- though Lua can read the files. Load the local fork directly instead.
+    return dofile(join_path(separator, plugin_dir, 'plugin', 'init.lua'))
+  end
+
+  return wezterm.plugin.require(file_plugin_url(platform, plugin_dir))
+end
+
 function M.apply(config, wezterm)
   local act = wezterm.action
   local save_workspace_event = 'Resurrect: Save Workspace'
   local save_workspace_as_event = 'Resurrect: Save Workspace As...'
   local fuzzy_restore_event = 'Resurrect: Restore Saved State'
-  local plugin_dir = '/Users/daniel/.config/wezterm/plugins/resurrect.wezterm'
+  local platform = detect_platform(wezterm)
+  local separator = path_separator(platform)
+  local plugin_dir = default_plugin_dir(platform)
+  local plugin_package_path = join_path(separator, plugin_dir, 'plugin', '?.lua')
+  local plugin_init_path = join_path(separator, plugin_dir, 'plugin', '?', 'init.lua')
 
   wezterm.GLOBAL.resurrect_local_plugin_dir = plugin_dir
   package.path = table.concat({
-    plugin_dir .. '/plugin/?.lua',
-    plugin_dir .. '/plugin/?/init.lua',
+    plugin_package_path,
+    plugin_init_path,
     package.path,
   }, ';')
 
@@ -37,17 +134,19 @@ function M.apply(config, wezterm)
     package.loaded[module_name] = nil
   end
 
-  local resurrect = wezterm.plugin.require('file://' .. plugin_dir)
+  local resurrect = load_resurrect_plugin(platform, plugin_dir, separator, wezterm)
   resurrect.workspace_state = require 'resurrect.workspace_state'
   resurrect.window_state = require 'resurrect.window_state'
   resurrect.tab_state = require 'resurrect.tab_state'
   resurrect.fuzzy_loader = require 'resurrect.fuzzy_loader'
   resurrect.state_manager = require 'resurrect.state_manager'
-  resurrect.state_manager.change_state_save_dir(plugin_dir .. '/state/')
-  local last_save_marker = '/Users/daniel/.config/wezterm/resurrect-last-save.txt'
+  local state_dir = join_path(separator, plugin_dir, 'state') .. separator
+  resurrect.state_manager.change_state_save_dir(state_dir)
+  local last_save_marker = default_last_save_marker(platform)
 
   local function workspace_state_path(workspace)
-    return plugin_dir .. '/state/workspace/' .. workspace:gsub('/', '+') .. '.json'
+    local safe_workspace = workspace:gsub('[/\\]', '+')
+    return state_dir .. 'workspace' .. separator .. safe_workspace .. '.json'
   end
 
   local function trim(value)
@@ -221,6 +320,12 @@ function M.apply(config, wezterm)
   table.insert(config.keys, { key = 's', mods = 'CTRL|SUPER', action = act.EmitEvent(save_workspace_event) })
   table.insert(config.keys, { key = 'S', mods = 'CTRL|SHIFT|SUPER', action = act.EmitEvent(save_workspace_as_event) })
   table.insert(config.keys, { key = 'r', mods = 'CTRL|SUPER', action = act.EmitEvent(fuzzy_restore_event) })
+
+  if platform.is_windows then
+    table.insert(config.keys, { key = 's', mods = 'CTRL|ALT', action = act.EmitEvent(save_workspace_event) })
+    table.insert(config.keys, { key = 'S', mods = 'CTRL|ALT', action = act.EmitEvent(save_workspace_as_event) })
+    table.insert(config.keys, { key = 'r', mods = 'CTRL|ALT', action = act.EmitEvent(fuzzy_restore_event) })
+  end
 
   wezterm.on(save_workspace_event, function(window)
     save_workspace(window)
