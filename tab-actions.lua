@@ -115,6 +115,7 @@ end
 local function ensure_tab_background_maps(wezterm)
   wezterm.GLOBAL.tab_backgrounds = wezterm.GLOBAL.tab_backgrounds or {}
   wezterm.GLOBAL.tab_backgrounds_by_title = wezterm.GLOBAL.tab_backgrounds_by_title or {}
+  wezterm.GLOBAL.tab_background_titles_by_id = wezterm.GLOBAL.tab_background_titles_by_id or {}
   wezterm.GLOBAL.tab_title_widths_by_window = wezterm.GLOBAL.tab_title_widths_by_window or {}
 end
 
@@ -133,6 +134,53 @@ local function mux_tab_title(tab)
   return title
 end
 
+local function pane_title(pane)
+  if pane == nil or pane.get_title == nil then
+    return nil
+  end
+
+  local ok, title = pcall(function()
+    return pane:get_title()
+  end)
+  if not ok or title == nil or title == '' then
+    return nil
+  end
+
+  return title
+end
+
+local function add_unique_title(titles, seen, title)
+  if title == nil or title == '' or seen[title] then
+    return
+  end
+
+  seen[title] = true
+  table.insert(titles, title)
+end
+
+local function active_tab_titles(tab, pane)
+  local titles = {}
+  local seen = {}
+
+  add_unique_title(titles, seen, mux_tab_title(tab))
+  add_unique_title(titles, seen, pane_title(pane))
+
+  if tab ~= nil and tab.active_pane ~= nil then
+    local ok, active_pane = pcall(function()
+      return tab:active_pane()
+    end)
+    if ok then
+      add_unique_title(titles, seen, pane_title(active_pane))
+    end
+  end
+
+  if #titles == 0 then
+    add_unique_title(titles, seen, 'wezterm')
+  end
+
+  return titles
+end
+
 local function remember_tab_title_background(wezterm, title, color)
   if title == nil or title == '' then
     return
@@ -146,21 +194,61 @@ local function remember_tab_title_background(wezterm, title, color)
   end
 end
 
-local function set_active_tab_background(wezterm, window, color)
+local function remember_tab_id_title(wezterm, tab_id, title)
+  if tab_id == nil or title == nil or title == '' then
+    return
+  end
+
+  ensure_tab_background_maps(wezterm)
+  wezterm.GLOBAL.tab_background_titles_by_id[tostring(tab_id)] = title
+end
+
+-- format-tab-title mirrors colors from title -> id so restored tabs survive id changes.
+-- Reset must clear both sides; otherwise the title lookup immediately recolors the tab.
+local function clear_tab_backgrounds_for_titles(wezterm, titles)
+  local title_lookup = {}
+
+  for _, title in ipairs(titles) do
+    title_lookup[title] = true
+    wezterm.GLOBAL.tab_backgrounds_by_title[title] = nil
+  end
+
+  for tab_id, title in pairs(wezterm.GLOBAL.tab_background_titles_by_id) do
+    if title_lookup[title] then
+      wezterm.GLOBAL.tab_backgrounds[tab_id] = nil
+      wezterm.GLOBAL.tab_background_titles_by_id[tab_id] = nil
+    end
+  end
+end
+
+local function remember_active_tab_titles(wezterm, tab_id, titles, color)
+  if color == nil or color == '' then
+    return
+  end
+
+  remember_tab_id_title(wezterm, tab_id, titles[1])
+  for _, title in ipairs(titles) do
+    remember_tab_title_background(wezterm, title, color)
+  end
+end
+
+local function set_active_tab_background(wezterm, window, color, pane)
   ensure_tab_background_maps(wezterm)
   local tab = window:active_tab()
   local tab_id = tostring(tab:tab_id())
-  local title = mux_tab_title(tab)
+  local titles = active_tab_titles(tab, pane)
 
   if color == '' then
     wezterm.GLOBAL.tab_backgrounds[tab_id] = nil
+    wezterm.GLOBAL.tab_background_titles_by_id[tab_id] = nil
+    clear_tab_backgrounds_for_titles(wezterm, titles)
   else
     wezterm.GLOBAL.tab_backgrounds[tab_id] = color
+    remember_active_tab_titles(wezterm, tab_id, titles, color)
   end
-  remember_tab_title_background(wezterm, title, color)
 end
 
-local function apply_tab_name_and_background(wezterm, window, line)
+local function apply_tab_name_and_background(wezterm, window, line, pane)
   if line == nil then
     return false
   end
@@ -184,7 +272,7 @@ local function apply_tab_name_and_background(wezterm, window, line)
   if name ~= '' then
     window:active_tab():set_title(name)
   end
-  set_active_tab_background(wezterm, window, color)
+  set_active_tab_background(wezterm, window, color, pane)
   return true
 end
 
@@ -218,7 +306,10 @@ local function tab_title(tab, wezterm, max_width)
   local custom_background = wezterm.GLOBAL.tab_backgrounds[tab_id] or wezterm.GLOBAL.tab_backgrounds_by_title[title]
   if custom_background ~= nil then
     wezterm.GLOBAL.tab_backgrounds[tab_id] = custom_background
+    remember_tab_id_title(wezterm, tab_id, title)
     remember_tab_title_background(wezterm, title, custom_background)
+  else
+    wezterm.GLOBAL.tab_background_titles_by_id[tab_id] = nil
   end
 
   local agent_deck = require 'agent-deck'
@@ -283,14 +374,14 @@ function M.apply(config, wezterm)
         return
       end
 
-      set_active_tab_background(wezterm, window, color)
+      set_active_tab_background(wezterm, window, color, pane)
     end),
   }
 
   local rename_and_set_tab_background = act.PromptInputLine {
     description = 'Tab name and color: name | purple, name | #44475a, or name | reset',
     action = wezterm.action_callback(function(window, pane, line)
-      if not apply_tab_name_and_background(wezterm, window, line) then
+      if not apply_tab_name_and_background(wezterm, window, line, pane) then
         window:toast_notification('WezTerm', 'Use: name | color', nil, 3000)
       end
     end),
@@ -320,9 +411,9 @@ function M.apply(config, wezterm)
       if id == 'rename' then
         window:perform_action(rename_tab, pane)
       elseif id == 'reset' then
-        set_active_tab_background(wezterm, window, '')
+        set_active_tab_background(wezterm, window, '', pane)
       elseif tab_background_presets[id] then
-        set_active_tab_background(wezterm, window, tab_background_presets[id])
+        set_active_tab_background(wezterm, window, tab_background_presets[id], pane)
       end
     end),
   }
@@ -333,6 +424,10 @@ function M.apply(config, wezterm)
 
   wezterm.on('set-tab-background', function(window, pane)
     window:perform_action(set_tab_background, pane)
+  end)
+
+  wezterm.on('reset-tab-background', function(window, pane)
+    set_active_tab_background(wezterm, window, '', pane)
   end)
 
   wezterm.on('rename-and-set-tab-background', function(window, pane)
@@ -360,6 +455,12 @@ function M.apply(config, wezterm)
     doc = 'Set or reset the active tab background color',
     icon = 'md_format_color_fill',
     action = act.EmitEvent 'set-tab-background',
+  }
+  add_command_palette_entry {
+    brief = 'Tabs: Reset Tab Color',
+    doc = 'Clear the active tab background color',
+    icon = 'md_format_color_fill',
+    action = act.EmitEvent 'reset-tab-background',
   }
   add_command_palette_entry {
     brief = 'Tabs: Rename and Color Tab',
