@@ -6,6 +6,15 @@ function M.apply(config, wezterm)
   local is_macos = target:find('apple%-darwin') ~= nil
   local is_windows = target:find('windows') ~= nil
 
+  local copy_or_send_interrupt = wezterm.action_callback(function(window, pane)
+    local selection = window:get_selection_text_for_pane(pane)
+    if selection ~= nil and selection ~= '' then
+      window:perform_action(act.CopyTo 'Clipboard', pane)
+    else
+      window:perform_action(act.SendKey { key = 'c', mods = 'CTRL' }, pane)
+    end
+  end)
+
 
   -- Ghostty-like macOS shortcuts.
   config.keys = {
@@ -84,41 +93,66 @@ function M.apply(config, wezterm)
       table.insert(config.keys, { key = key, mods = mods, action = action })
     end
 
-    -- Config, app, tabs, and windows.
+    -- Config, app, tabs, and windows. Windows mirrors macOS/Ghostty
+    -- by using Ctrl where macOS uses Cmd/Super.
     add_windows_key(',', 'CTRL', act.EmitEvent 'open-config')
     add_windows_key(',', 'CTRL|SHIFT', act.ReloadConfiguration)
-    add_windows_key('N', 'CTRL|SHIFT', act.SpawnWindow)
-    add_windows_key('T', 'CTRL|SHIFT', act.SpawnTab 'CurrentPaneDomain')
-    add_windows_key('Q', 'CTRL|SHIFT|ALT', act.QuitApplication)
-    add_windows_key('P', 'CTRL|SHIFT|ALT', act.ActivateCommandPalette)
+    add_windows_key('n', 'CTRL', act.SpawnWindow)
+    add_windows_key('t', 'CTRL', act.SpawnTab 'CurrentPaneDomain')
+    add_windows_key('q', 'CTRL', act.QuitApplication)
+    add_windows_key('p', 'CTRL|SHIFT', act.ActivateCommandPalette)
 
-    -- Close actions.
-    add_windows_key('phys:W', 'CTRL', act.CloseCurrentPane { confirm = false })
-    add_windows_key('W', 'CTRL|SHIFT', act.CloseCurrentTab { confirm = true })
+    -- Close actions: mirror Cmd+W / Opt+Cmd+W / Shift+Cmd+W.
+    add_windows_key('w', 'CTRL', act.CloseCurrentPane { confirm = true })
+    add_windows_key('phys:W', 'CTRL', act.CloseCurrentPane { confirm = true })
+    add_windows_key('w', 'CTRL|ALT', act.CloseCurrentTab { confirm = true })
+    add_windows_key('w', 'CTRL|SHIFT', act.CloseCurrentPane { confirm = true })
 
     -- Tabs and tab metadata.
     add_windows_key('[', 'CTRL|SHIFT', act.ActivateTabRelative(-1))
     add_windows_key(']', 'CTRL|SHIFT', act.ActivateTabRelative(1))
-    add_windows_key('R', 'CTRL|SHIFT|ALT', act.EmitEvent 'rename-tab')
-    add_windows_key('C', 'CTRL|SHIFT|ALT', act.EmitEvent 'set-tab-background')
-    add_windows_key('X', 'CTRL|SHIFT|ALT', act.EmitEvent 'reset-tab-background')
+    add_windows_key('r', 'CTRL|SHIFT', act.EmitEvent 'rename-tab')
+    add_windows_key('b', 'CTRL|SHIFT', act.EmitEvent 'set-tab-background')
+    add_windows_key('x', 'CTRL|SHIFT', act.EmitEvent 'reset-tab-background')
 
     -- Splits and pane movement.
+    add_windows_key('d', 'CTRL', act.SplitHorizontal { domain = 'CurrentPaneDomain' })
     add_windows_key('phys:D', 'CTRL', act.SplitHorizontal { domain = 'CurrentPaneDomain' })
+    add_windows_key('d', 'CTRL|SHIFT', act.SplitVertical { domain = 'CurrentPaneDomain' })
     add_windows_key('phys:D', 'CTRL|SHIFT', act.SplitVertical { domain = 'CurrentPaneDomain' })
+    add_windows_key('[', 'CTRL', act.ActivatePaneDirection 'Prev')
+    add_windows_key(']', 'CTRL', act.ActivatePaneDirection 'Next')
     add_windows_key('LeftArrow', 'CTRL|ALT', act.ActivatePaneDirection 'Left')
     add_windows_key('RightArrow', 'CTRL|ALT', act.ActivatePaneDirection 'Right')
     add_windows_key('UpArrow', 'CTRL|ALT', act.ActivatePaneDirection 'Up')
     add_windows_key('DownArrow', 'CTRL|ALT', act.ActivatePaneDirection 'Down')
+    -- macOS uses Ctrl+Cmd+Arrow; use Ctrl+Shift+Alt on Windows to avoid
+    -- colliding with the plain Ctrl+Arrow prompt-scrolling aliases below.
     add_windows_key('LeftArrow', 'CTRL|SHIFT|ALT', act.AdjustPaneSize { 'Left', 10 })
     add_windows_key('RightArrow', 'CTRL|SHIFT|ALT', act.AdjustPaneSize { 'Right', 10 })
     add_windows_key('UpArrow', 'CTRL|SHIFT|ALT', act.AdjustPaneSize { 'Up', 10 })
     add_windows_key('DownArrow', 'CTRL|SHIFT|ALT', act.AdjustPaneSize { 'Down', 10 })
     add_windows_key('Enter', 'CTRL|SHIFT', act.TogglePaneZoomState)
 
-    -- Fullscreen/search.
-    add_windows_key('F', 'CTRL|ALT', act.ToggleFullScreen)
-    add_windows_key('F', 'CTRL', act.Search 'CurrentSelectionOrEmptyString')
+    -- Fullscreen.
+    add_windows_key('Enter', 'CTRL', act.ToggleFullScreen)
+    add_windows_key('f', 'CTRL|ALT', act.ToggleFullScreen)
+
+    -- Clipboard/search/selection.
+    add_windows_key('c', 'CTRL', copy_or_send_interrupt)
+    add_windows_key('v', 'CTRL', act.PasteFrom 'Clipboard')
+    add_windows_key('f', 'CTRL', act.Search 'CurrentSelectionOrEmptyString')
+    add_windows_key('e', 'CTRL', act.Search 'CurrentSelectionOrEmptyString')
+
+    -- Scrolling.
+    add_windows_key('Home', 'CTRL', act.ScrollToTop)
+    add_windows_key('End', 'CTRL', act.ScrollToBottom)
+    add_windows_key('PageUp', 'CTRL', act.ScrollByPage(-1))
+    add_windows_key('PageDown', 'CTRL', act.ScrollByPage(1))
+    add_windows_key('UpArrow', 'CTRL|SHIFT', act.ScrollToPrompt(-1))
+    add_windows_key('DownArrow', 'CTRL|SHIFT', act.ScrollToPrompt(1))
+    add_windows_key('UpArrow', 'CTRL', act.ScrollToPrompt(-1))
+    add_windows_key('DownArrow', 'CTRL', act.ScrollToPrompt(1))
   end
 
   -- Mouse shortcuts inside the terminal pane.
@@ -158,6 +192,12 @@ function M.apply(config, wezterm)
       { key = 'DownArrow', mods = 'NONE', action = act.CopyMode 'NextMatch' },
     },
   }
+
+  if is_windows then
+    table.insert(config.key_tables.search_mode, { key = 'f', mods = 'CTRL', action = act.CopyMode 'Close' })
+    table.insert(config.key_tables.search_mode, { key = 'g', mods = 'CTRL', action = act.CopyMode 'NextMatch' })
+    table.insert(config.key_tables.search_mode, { key = 'g', mods = 'CTRL|SHIFT', action = act.CopyMode 'PriorMatch' })
+  end
 
   wezterm.on('open-config', function()
     local command

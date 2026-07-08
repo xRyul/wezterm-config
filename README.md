@@ -35,4 +35,5 @@ A compact WezTerm configuration inspired by Ghostty defaults, using Dracula colo
 - Resurrect fork checkout: `\\wsl.localhost\Ubuntu\home\daniel\Developer\Projects\resurrect.wezterm`.
 - WSL plugin symlink: `~/.config/wezterm/plugins/resurrect.wezterm -> ~/Developer/Projects/resurrect.wezterm`.
 - Windows loads `resurrect.wezterm` directly from the WSL checkout because native WezTerm rejects WSL UNC `file://` plugin URLs when the top-level config is loaded from the Windows shim.
-- Windows aliases: `Ctrl+Alt+S` saves the workspace, `Ctrl+Alt+Shift+S` saves as, and `Ctrl+Alt+R` opens the resurrect restore picker.
+- Windows mirrors the macOS/Ghostty shortcuts by using `Ctrl` where macOS uses `Cmd`: `Ctrl+C` copies selected text and otherwise sends shell interrupt, `Ctrl+V` pastes, `Ctrl+T` opens a tab, `Ctrl+N` opens a window, `Ctrl+W` closes the current pane, and `Ctrl+F` searches.
+- Windows resurrect aliases: `Ctrl+Alt+S` saves the workspace, `Ctrl+Alt+Shift+S` saves as, and `Ctrl+Alt+R` opens the resurrect restore picker.
