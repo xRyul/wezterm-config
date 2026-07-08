@@ -325,6 +325,12 @@ function M.apply(config, wezterm)
     table.insert(config.keys, { key = 's', mods = 'CTRL|ALT', action = act.EmitEvent(save_workspace_event) })
     table.insert(config.keys, { key = 'S', mods = 'CTRL|ALT', action = act.EmitEvent(save_workspace_as_event) })
     table.insert(config.keys, { key = 'r', mods = 'CTRL|ALT', action = act.EmitEvent(fuzzy_restore_event) })
+
+    -- Physical-key fallbacks help Windows layouts that report Ctrl+Alt
+    -- letter chords differently from logical lowercase keys.
+    table.insert(config.keys, { key = 'phys:S', mods = 'CTRL|ALT', action = act.EmitEvent(save_workspace_event) })
+    table.insert(config.keys, { key = 'phys:S', mods = 'CTRL|SHIFT|ALT', action = act.EmitEvent(save_workspace_as_event) })
+    table.insert(config.keys, { key = 'phys:R', mods = 'CTRL|ALT', action = act.EmitEvent(fuzzy_restore_event) })
   end
 
   wezterm.on(save_workspace_event, function(window)
