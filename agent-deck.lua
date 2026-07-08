@@ -168,6 +168,15 @@ local function notify_pi_waiting(window, wezterm, pane_id)
 
   pi_waiting_notifications[pane_id] = true
   local message = 'Pi needs your input at ' .. os.date('%H:%M:%S')
+  local is_macos = (wezterm.target_triple or ''):find('apple%-darwin') ~= nil
+
+  if not is_macos then
+    pcall(function()
+      window:toast_notification('Pi / WezTerm', message, nil, 5000)
+    end)
+    return
+  end
+
 
   -- macOS suppresses banners from the foreground app. Use osascript as an
   -- external sender so Pi prompts are visible even while WezTerm is focused.

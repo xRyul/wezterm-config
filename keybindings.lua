@@ -64,12 +64,62 @@ function M.apply(config, wezterm)
     { key = 'DownArrow', mods = 'SHIFT|SUPER', action = act.ScrollToPrompt(1) },
     { key = 'UpArrow', mods = 'SUPER', action = act.ScrollToPrompt(-1) },
     { key = 'DownArrow', mods = 'SUPER', action = act.ScrollToPrompt(1) },
-    { key = 'RightArrow', mods = 'SUPER', action = act.SendString '\x05' },
-    { key = 'LeftArrow', mods = 'SUPER', action = act.SendString '\x01' },
-    { key = 'Backspace', mods = 'SUPER', action = act.SendString '\x15' },
     { key = 'LeftArrow', mods = 'ALT', action = act.SendString '\x1bb' },
     { key = 'RightArrow', mods = 'ALT', action = act.SendString '\x1bf' },
   }
+
+  if not is_windows then
+    -- Non-Windows shell-style line movement. On Windows these raw control bytes
+    -- can trigger font warnings for unrenderable control glyphs such as U+0001.
+    table.insert(config.keys, { key = 'RightArrow', mods = 'SUPER', action = act.SendString '\x05' })
+    table.insert(config.keys, { key = 'LeftArrow', mods = 'SUPER', action = act.SendString '\x01' })
+    table.insert(config.keys, { key = 'Backspace', mods = 'SUPER', action = act.SendString '\x15' })
+  end
+
+  if is_windows then
+    -- Windows-friendly aliases for the macOS Cmd/Super bindings above.
+    -- The original Super bindings are kept for macOS; these avoid relying on
+    -- Win-key chords that Windows often intercepts.
+    local function add_windows_key(key, mods, action)
+      table.insert(config.keys, { key = key, mods = mods, action = action })
+    end
+
+    -- Config, app, tabs, and windows.
+    add_windows_key(',', 'CTRL', act.EmitEvent 'open-config')
+    add_windows_key(',', 'CTRL|SHIFT', act.ReloadConfiguration)
+    add_windows_key('N', 'CTRL|SHIFT', act.SpawnWindow)
+    add_windows_key('T', 'CTRL|SHIFT', act.SpawnTab 'CurrentPaneDomain')
+    add_windows_key('Q', 'CTRL|SHIFT|ALT', act.QuitApplication)
+    add_windows_key('P', 'CTRL|SHIFT|ALT', act.ActivateCommandPalette)
+
+    -- Close actions.
+    add_windows_key('phys:W', 'CTRL', act.CloseCurrentPane { confirm = false })
+    add_windows_key('W', 'CTRL|SHIFT', act.CloseCurrentTab { confirm = true })
+
+    -- Tabs and tab metadata.
+    add_windows_key('[', 'CTRL|SHIFT', act.ActivateTabRelative(-1))
+    add_windows_key(']', 'CTRL|SHIFT', act.ActivateTabRelative(1))
+    add_windows_key('R', 'CTRL|SHIFT|ALT', act.EmitEvent 'rename-tab')
+    add_windows_key('C', 'CTRL|SHIFT|ALT', act.EmitEvent 'set-tab-background')
+    add_windows_key('X', 'CTRL|SHIFT|ALT', act.EmitEvent 'reset-tab-background')
+
+    -- Splits and pane movement.
+    add_windows_key('phys:D', 'CTRL', act.SplitHorizontal { domain = 'CurrentPaneDomain' })
+    add_windows_key('phys:D', 'CTRL|SHIFT', act.SplitVertical { domain = 'CurrentPaneDomain' })
+    add_windows_key('LeftArrow', 'CTRL|ALT', act.ActivatePaneDirection 'Left')
+    add_windows_key('RightArrow', 'CTRL|ALT', act.ActivatePaneDirection 'Right')
+    add_windows_key('UpArrow', 'CTRL|ALT', act.ActivatePaneDirection 'Up')
+    add_windows_key('DownArrow', 'CTRL|ALT', act.ActivatePaneDirection 'Down')
+    add_windows_key('LeftArrow', 'CTRL|SHIFT|ALT', act.AdjustPaneSize { 'Left', 10 })
+    add_windows_key('RightArrow', 'CTRL|SHIFT|ALT', act.AdjustPaneSize { 'Right', 10 })
+    add_windows_key('UpArrow', 'CTRL|SHIFT|ALT', act.AdjustPaneSize { 'Up', 10 })
+    add_windows_key('DownArrow', 'CTRL|SHIFT|ALT', act.AdjustPaneSize { 'Down', 10 })
+    add_windows_key('Enter', 'CTRL|SHIFT', act.TogglePaneZoomState)
+
+    -- Fullscreen/search.
+    add_windows_key('F', 'CTRL|ALT', act.ToggleFullScreen)
+    add_windows_key('F', 'CTRL', act.Search 'CurrentSelectionOrEmptyString')
+  end
 
   -- Mouse shortcuts inside the terminal pane.
   -- Super/Cmd + right-click opens a tab actions menu without replacing plain right-click behavior.
@@ -80,6 +130,16 @@ function M.apply(config, wezterm)
       action = act.EmitEvent 'show-tab-actions',
     },
   }
+
+  if is_windows then
+    -- Windows-friendly alias for keyboards where Cmd maps to Win/Super or
+    -- where Win-key mouse chords are intercepted before WezTerm sees them.
+    table.insert(config.mouse_bindings, {
+      event = { Up = { streak = 1, button = 'Right' } },
+      mods = 'CTRL',
+      action = act.EmitEvent 'show-tab-actions',
+    })
+  end
 
   config.key_tables = {
     search_mode = {
