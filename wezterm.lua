@@ -5,6 +5,10 @@ package.path = wezterm.config_dir .. '/?.lua;' .. package.path
 
 local config = wezterm.config_builder()
 
+if (wezterm.target_triple or ''):find('apple%-darwin') then
+  config.enable_kitty_keyboard = true
+end
+
 require('theme').apply(config, wezterm)
 require('tab-actions').apply(config, wezterm)
 require('keybindings').apply(config, wezterm)

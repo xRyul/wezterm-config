@@ -155,6 +155,17 @@ function M.apply(config, wezterm)
     add_windows_key('DownArrow', 'CTRL', act.ScrollToPrompt(1))
   end
 
+  -- Remove WezTerm's Cmd+1..9 tab shortcuts so Herdr receives the original keys.
+  if is_macos then
+    for index = 1, 9 do
+      table.insert(config.keys, {
+        key = tostring(index),
+        mods = 'SUPER',
+        action = act.DisableDefaultAssignment,
+      })
+    end
+  end
+
   -- Mouse shortcuts inside the terminal pane.
   -- Super/Cmd + right-click opens a tab actions menu without replacing plain right-click behavior.
   config.mouse_bindings = {
